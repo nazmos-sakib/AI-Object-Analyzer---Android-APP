@@ -34,10 +34,11 @@ import com.example.cameraobjectanalyzer.domain.model.Detection
 import com.example.cameraobjectanalyzer.domain.model.toRectF
 import com.example.cameraobjectanalyzer.presentation.viewmodel.CameraViewModel
 import com.example.cameraobjectanalyzer.utils.ChoreographerFPSMonitor
+import com.example.cameraobjectanalyzer.utils.Constants.ImageDebugTag
 import com.example.cameraobjectanalyzer.utils.Constants.PerformanceDebugTag
 import com.example.cameraobjectanalyzer.utils.extentions.bitmapToJpegBytes
 import com.example.cameraobjectanalyzer.utils.extentions.mapToPreview
-import com.example.cameraobjectanalyzer.utils.extentions.rgbaToBitmap
+import com.example.cameraobjectanalyzer.utils.extentions.rgbToBitmap
 import com.example.cameraobjectanalyzer.utils.extentions.rotateBitmap
 import com.example.cameraobjectanalyzer.utils.extentions.yuvToJpegByte
 import kotlinx.coroutines.Dispatchers
@@ -51,7 +52,8 @@ fun CameraScreen(viewModel: CameraViewModel) {
     val fps by viewModel.fps.collectAsStateWithLifecycle()
     val cameraFps by viewModel.cameraFps.collectAsStateWithLifecycle()
 
-    var cameraPreviewSize by remember { mutableStateOf(Pair(0, 0)) }
+    var previewViewSize: Size by remember { mutableStateOf(Size(0f,0f)) }
+    var imageProxySize: Size by remember { mutableStateOf(Size(0f,0f)) }
     /*
     * output imageProxy Format
     * ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888
@@ -103,15 +105,23 @@ fun CameraScreen(viewModel: CameraViewModel) {
         CameraPreview(
             outputImageProxyFormat = outputImageProxyFormat,
             onFrame = {_imgProxy,_previewView->
-                cameraPreviewSize = Pair(_previewView.width, _previewView.height)
 
+                //for proper bounding box =========================
+                previewViewSize = Size(_previewView .width.toFloat(), _previewView.height.toFloat())
+                imageProxySize = if (_imgProxy.imageInfo.rotationDegrees in intArrayOf(0,180)) {
+                    Size(_imgProxy.width.toFloat(), _imgProxy.height.toFloat())
+                }
+                else {Size(_imgProxy.height.toFloat(), _imgProxy.width.toFloat())}
+                //end bounding box pre calculation =========================
+
+                //skip imageProxy if its already in process
                 if(!viewModel.isProcessing.value){
 
                     val now = System.currentTimeMillis()
 
                     viewModel.debugInfo(_imgProxy,_previewView)
                     //val jpegBytes = _imgProxy.yuvToJpegByte(quality = 70)
-                    val rotatedBitMap = _imgProxy.rgbaToBitmap().rotateBitmap(_imgProxy.imageInfo.rotationDegrees)
+                    val rotatedBitMap = _imgProxy.rgbToBitmap().rotateBitmap(_imgProxy.imageInfo.rotationDegrees)
                     Log.d(PerformanceDebugTag, "CameraScreen: Time to prepare image: ${System.currentTimeMillis()-now}")
 
                     //API call
@@ -146,17 +156,14 @@ fun CameraScreen(viewModel: CameraViewModel) {
             //.matchParentSize()
             .fillMaxSize()
         ) {
-            //Log.d("ComposeDebug", "Canvas recomposed")
-            //Log.d(ImageDebugTag, "Canvas: previewView: width:${cameraPreviewSize.first} height: ${cameraPreviewSize.second}")
-            //Log.d(ImageDebugTag, "Canvas: Canvas: width:${size.width} height: ${size.height}")
+            //if previewView is set to fillMaxSize without an aspect ratio then both will have -> width:1080 height: 2294
             detectedObjects.forEach { detection ->
                 //Log.d(UiDebugTag, "CameraScreen: $detection")
                 drawBoundingBox(
                     detection = detection,
-                    canvasWidth = size.width,
-                    canvasHeight = size.height,
-                    previewWidth = cameraPreviewSize.first,
-                    previewHeight = cameraPreviewSize.second
+                    canvasSize = size,
+                    previewViewSize = previewViewSize,
+                    imageProxySize = imageProxySize
                 )
             }
         }
@@ -196,31 +203,32 @@ fun CameraScreen(viewModel: CameraViewModel) {
 //extension function
 private fun DrawScope.drawBoundingBox(
     detection: Detection,
-    canvasWidth: Float,
-    canvasHeight: Float,
-    previewWidth: Int,
-    previewHeight: Int
+    canvasSize: Size,
+    previewViewSize: Size,
+    imageProxySize: Size,
 ) {
-    if (previewWidth == 0 || previewHeight == 0) return
+    if (previewViewSize.width == 0f || previewViewSize.height == 0f) return
 
-    val previewTopOffset = (2294 - 1080) / 2f
+    //tune the canvas size and previewView size. and set an offset
+    // devided by 2 as preview is in center and top and bottom has the same offset
+    val previewTopOffset = (canvasSize.height - previewViewSize.height) / 2f
 
     val bbox = detection.toRectF()
-        .mapToPreview()
+        .mapToPreview( previewViewSize, imageProxySize)
         .apply {
             offset(0f, previewTopOffset)
         }
+
+    //Log.d(ImageDebugTag, "drawBoundingBox: ract: $bbox")
+
+
 
     val left  = bbox.left
     val top = bbox.top
     val right = bbox.right
     val bottom = bbox.bottom
 
-    /*
-    val left  = bbox.left * canvasWidth
-    val top = bbox.top * previewHeight
-    val right = bbox.right * canvasWidth
-    val bottom = bbox.bottom * previewHeight*/
+
 
     // Draw rectangle
     drawRect(
@@ -251,7 +259,7 @@ private fun DrawScope.drawBoundingBox(
 
         drawText(
             labelText,
-            left,
+            left + ((right-left)/2),
             top - 5,
             paint
         )

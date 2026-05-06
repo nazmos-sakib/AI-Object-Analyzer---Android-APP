@@ -79,7 +79,7 @@ class CameraViewModel(
         if (_isProcessing.value) return
 
         _isProcessing.value = true
-        Log.d(NetworkDebugTag, "called")
+        //Log.d(NetworkDebugTag, "API called")
         updateCameraFPS()
 
         val requestBody = jpegBytes.toRequestBody("image/jpeg".toMediaType())
@@ -102,7 +102,6 @@ class CameraViewModel(
                 val bodyString = response.body.string()
                 Log.d(NetworkDebugTag, "RESPONSE: $bodyString")
                 Log.d(NetworkDebugTag, "STATUS: $statusCode")
-                Log.d(NetworkDebugTag, "RESPONSE: $bodyString")
 
                 if (response.isSuccessful) { // same as (code in 200..299)
                     _detectedObjects.value =

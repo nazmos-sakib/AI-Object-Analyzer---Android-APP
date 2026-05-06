@@ -60,7 +60,7 @@ fun ImageProxy.byteArrayToBitmap(): Bitmap{
     return BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size)
 }
 
-fun ImageProxy.rgbaToBitmap(): Bitmap {
+fun ImageProxy.rgbToBitmap(): Bitmap {
     val buffer = planes[0].buffer
     val bitmap = createBitmap(width, height)
     bitmap.copyPixelsFromBuffer(buffer)

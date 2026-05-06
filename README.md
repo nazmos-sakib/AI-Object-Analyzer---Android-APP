@@ -42,3 +42,14 @@ Flask + YOLOv8
 JSON bounding boxes
 ↓
 Android overlay rendering
+
+
+original → resized → padded (letterbox) → 1280x1280
+
+Input image: 720 x 1280
+
+Scale factor = 1280 / 1280 = 1.0
+New size = 720 x 1280
+Padding:
+top/bottom = (1280 - 720)/2 = 280 px
+previewView = width:1080 height: 2294

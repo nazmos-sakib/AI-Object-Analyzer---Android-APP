@@ -57,6 +57,7 @@ fun CameraPreview(
     val resolutionSelector = ResolutionSelector.Builder()
         .setAspectRatioStrategy(
             AspectRatioStrategy(
+                //AspectRatio.RATIO_4_3,
                 AspectRatio.RATIO_16_9,
                 AspectRatioStrategy.FALLBACK_RULE_AUTO
             )
@@ -150,10 +151,8 @@ fun CameraPreview(
         factory = { previewView },
         modifier = Modifier
             .fillMaxSize()
-            //.aspectRatio(1f)
-
-        //when no aspect ratio is set previewView is width:1080 height: 2294
-        //.aspectRatio(1f) ->1080x1080
+            //when no aspect ratio is set previewView is width:1080 height: 2294
+            //.aspectRatio(1f) //->1080x1080
     )
 
 
