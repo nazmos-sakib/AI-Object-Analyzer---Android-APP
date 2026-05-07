@@ -85,7 +85,7 @@ class CameraViewModel(
         val requestBody = jpegBytes.toRequestBody("image/jpeg".toMediaType())
 
         val request = Request.Builder()
-            .url("$BASE_URL/infer")
+            .url("$BASE_URL/infer/json")
             .post(requestBody)
             .build()
 
