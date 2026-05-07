@@ -5,7 +5,9 @@ package com.example.cameraobjectanalyzer.presentation
 import android.graphics.Paint
 import android.util.Log
 import androidx.camera.core.ImageAnalysis
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,12 +18,15 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -43,11 +48,13 @@ import com.example.cameraobjectanalyzer.utils.extentions.rotateBitmap
 import com.example.cameraobjectanalyzer.utils.extentions.yuvToJpegByte
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 
 @Composable
 fun CameraScreen(viewModel: CameraViewModel) {
 
-    val detectedObjects by viewModel.detectedObjects.collectAsStateWithLifecycle()
+    val serverBitmap by viewModel.serverBitmap.collectAsStateWithLifecycle()
+    val hasReceivedFirstFrame by viewModel.hasReceivedFirstFrame.collectAsStateWithLifecycle()
     val isProcessing by viewModel.isProcessing.collectAsStateWithLifecycle()
     val fps by viewModel.fps.collectAsStateWithLifecycle()
     val cameraFps by viewModel.cameraFps.collectAsStateWithLifecycle()
@@ -102,70 +109,68 @@ fun CameraScreen(viewModel: CameraViewModel) {
         contentAlignment = Alignment.Center
     ) {
 
-        CameraPreview(
-            outputImageProxyFormat = outputImageProxyFormat,
-            onFrame = {_imgProxy,_previewView->
 
-                //for proper bounding box =========================
-                previewViewSize = Size(_previewView .width.toFloat(), _previewView.height.toFloat())
-                imageProxySize = if (_imgProxy.imageInfo.rotationDegrees in intArrayOf(0,180)) {
-                    Size(_imgProxy.width.toFloat(), _imgProxy.height.toFloat())
-                }
-                else {Size(_imgProxy.height.toFloat(), _imgProxy.width.toFloat())}
-                //end bounding box pre calculation =========================
+            CameraPreview(
+                modifier = Modifier.alpha(
+                    if (hasReceivedFirstFrame) 0f else 1f
+                ),
+                outputImageProxyFormat = outputImageProxyFormat,
+                onFrame = { _imgProxy, _previewView ->
 
-                //skip imageProxy if its already in process
-                if(!viewModel.isProcessing.value){
+                    //for proper bounding box =========================
+                    previewViewSize =
+                        Size(_previewView.width.toFloat(), _previewView.height.toFloat())
+                    imageProxySize =
+                        if (_imgProxy.imageInfo.rotationDegrees in intArrayOf(0, 180)) {
+                            Size(_imgProxy.width.toFloat(), _imgProxy.height.toFloat())
+                        } else {
+                            Size(_imgProxy.height.toFloat(), _imgProxy.width.toFloat())
+                        }
+                    //end bounding box pre calculation =========================
 
-                    val now = System.currentTimeMillis()
+                    //skip imageProxy if its already in process
+                    if (!viewModel.isProcessing.value) {
 
-                    viewModel.debugInfo(_imgProxy,_previewView)
-                    //val jpegBytes = _imgProxy.yuvToJpegByte(quality = 70)
-                    val rotatedBitMap = _imgProxy.rgbToBitmap().rotateBitmap(_imgProxy.imageInfo.rotationDegrees)
-                    Log.d(PerformanceDebugTag, "CameraScreen: Time to prepare image: ${System.currentTimeMillis()-now}")
+                        val now = System.currentTimeMillis()
 
-                    //API call
-                    viewModel.uploadImageV2(
-                        rotatedBitMap.bitmapToJpegBytes()
-                    )
+                        //viewModel.debugInfo(_imgProxy, _previewView)
+                        //val jpegBytes = _imgProxy.yuvToJpegByte(quality = 70)
+                        val rotatedBitMap = _imgProxy.rgbToBitmap()
+                            .rotateBitmap(_imgProxy.imageInfo.rotationDegrees)
+                        Log.d(
+                            PerformanceDebugTag,
+                            "CameraScreen: Time to prepare image: ${System.currentTimeMillis() - now}"
+                        )
 
-                    //save image in local memory
-                    /*scope.launch(Dispatchers.IO) {
+                        //API call
+                        viewModel.uploadImageV2(
+                            rotatedBitMap.bitmapToJpegBytes()
+                        )
+
+                        //save image in local memory
+                        /*scope.launch(Dispatchers.IO) {
                         //if (viewModel.isProcessing.value) return@launch
                         //viewModel.saveImageProxy(context,jpegBytes,_imgProxy.imageInfo.rotationDegrees.toFloat())
                         viewModel.saveImageProxy(context,rotatedBitMap)
                     }*/
 
-                    //viewModel.testUploadImage(jpegBytes)
+                        //Log.d(PerformanceDebugTag, "CameraScreen: Time to process: ${System.currentTimeMillis()-now}")
+                    }
 
 
-                    //viewModel.viewModelFPSRateLimit()
-
-                    //Log.d(PerformanceDebugTag, "CameraScreen: Time to process: ${System.currentTimeMillis()-now}")
                 }
+            )
 
+        // SERVER RENDERED IMAGE
+        serverBitmap?.let { bitmap ->
 
-
-            },
-            onDetections = {
-
-            }
-        )
-        // Overlay canvas for bounding boxes
-        Canvas(modifier = Modifier
-            //.matchParentSize()
-            .fillMaxSize()
-        ) {
-            //if previewView is set to fillMaxSize without an aspect ratio then both will have -> width:1080 height: 2294
-            detectedObjects.forEach { detection ->
-                //Log.d(UiDebugTag, "CameraScreen: $detection")
-                drawBoundingBox(
-                    detection = detection,
-                    canvasSize = size,
-                    previewViewSize = previewViewSize,
-                    imageProxySize = imageProxySize
+                Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.FillBounds
                 )
-            }
+
         }
 
         // FPS and processing indicator
@@ -199,70 +204,3 @@ fun CameraScreen(viewModel: CameraViewModel) {
         }
     }
 }
-
-//extension function
-private fun DrawScope.drawBoundingBox(
-    detection: Detection,
-    canvasSize: Size,
-    previewViewSize: Size,
-    imageProxySize: Size,
-) {
-    if (previewViewSize.width == 0f || previewViewSize.height == 0f) return
-
-    //tune the canvas size and previewView size. and set an offset
-    // devided by 2 as preview is in center and top and bottom has the same offset
-    val previewTopOffset = (canvasSize.height - previewViewSize.height) / 2f
-
-    val bbox = detection.toRectF()
-        .mapToPreview( previewViewSize, imageProxySize)
-        .apply {
-            offset(0f, previewTopOffset)
-        }
-
-    //Log.d(ImageDebugTag, "drawBoundingBox: ract: $bbox")
-
-
-
-    val left  = bbox.left
-    val top = bbox.top
-    val right = bbox.right
-    val bottom = bbox.bottom
-
-
-
-    // Draw rectangle
-    drawRect(
-        color = Color.Green,
-        topLeft = Offset(left, top),
-        size = Size(right - left, bottom - top),
-        style = Stroke(width = 4f)
-    )
-
-    // Draw label background
-   val labelText = "${detection.`class`} ${"%.1f".format(detection.confidence * 100)}%"
-    /*     val textSize = 14.sp
-        val textPaint =  TextPainter(
-            text = androidx.compose.ui.text.AnnotatedString(labelText),
-            textAlign = androidx.compose.ui.text.style.TextAlign.Left,
-            density = androidx.compose.ui.unit.Density(1f, 1f, 1f),
-            layoutDirection = androidx.compose.ui.unit.LayoutDirection.Ltr
-        )*/
-
-    // Draw label
-    drawContext.canvas.nativeCanvas.apply {
-        val paint = Paint().apply {
-            color = android.graphics.Color.GREEN
-            textSize = 24f
-            isAntiAlias = true
-            style = Paint.Style.FILL
-        }
-
-        drawText(
-            labelText,
-            left + ((right-left)/2),
-            top - 5,
-            paint
-        )
-    }
-}
-

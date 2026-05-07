@@ -31,9 +31,9 @@ import java.util.concurrent.Executors
 //Clean
 @Composable
 fun CameraPreview(
+    modifier: Modifier,
     outputImageProxyFormat: Int,
     onFrame: (ImageProxy,PreviewView) -> Unit,
-    onDetections: (List<Int>) -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -149,7 +149,7 @@ fun CameraPreview(
 
     AndroidView(
         factory = { previewView },
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
             //when no aspect ratio is set previewView is width:1080 height: 2294
             //.aspectRatio(1f) //->1080x1080

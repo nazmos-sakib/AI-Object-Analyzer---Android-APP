@@ -40,17 +40,14 @@ class CameraViewModel(
 ) : ViewModel() {
 
 
-    private val gson = Gson()
 
+    private val _serverBitmap = MutableStateFlow<Bitmap?>(null)
 
-/*
-    private val _detectedObjects = MutableStateFlow<List<DetectedObject>>(emptyList())
-    val detectedObjects: StateFlow<List<DetectedObject>> = _detectedObjects.asStateFlow()
-*/
+    val serverBitmap: StateFlow<Bitmap?> = _serverBitmap
 
-    private val _detectedObjects = MutableStateFlow<List<Detection>>(emptyList())
-    val detectedObjects: StateFlow<List<Detection>> = _detectedObjects.asStateFlow()
+    private val _hasReceivedFirstFrame = MutableStateFlow(false)
 
+    val hasReceivedFirstFrame = _hasReceivedFirstFrame.asStateFlow()
     private val _isProcessing = MutableStateFlow(false)
     val isProcessing: StateFlow<Boolean> = _isProcessing.asStateFlow()
 
@@ -63,15 +60,6 @@ class CameraViewModel(
     private var frameCount = 0
     private var lastTime = System.currentTimeMillis()
 
-    init {
-
-    }
-
-    fun parseNetworkCallResponse(json: String): DetectionResponse {
-        val a = gson.fromJson(json, DetectionResponse::class.java)
-        Log.d(NetworkDebugTag, "parseResponse: ${a.detections.size}")
-        return a
-    }
 
 
     fun uploadImageV2(jpegBytes: ByteArray) {
@@ -79,13 +67,15 @@ class CameraViewModel(
         if (_isProcessing.value) return
 
         _isProcessing.value = true
+        //_hasReceivedFirstFrame.value = false
+
         //Log.d(NetworkDebugTag, "API called")
         updateCameraFPS()
 
         val requestBody = jpegBytes.toRequestBody("image/jpeg".toMediaType())
 
         val request = Request.Builder()
-            .url("$BASE_URL/infer")
+            .url("$BASE_URL/infer/image")
             .post(requestBody)
             .build()
 
@@ -94,27 +84,34 @@ class CameraViewModel(
             override fun onFailure(call: Call, e: IOException) {
                 Log.e(NetworkDebugTag, "FAILED: ${e.message}")
                 _isProcessing.value = false
+                _hasReceivedFirstFrame.value = false
             }
 
             override fun onResponse(call: Call, response: Response) {
 
                 val statusCode = response.code
-                val bodyString = response.body.string()
-                Log.d(NetworkDebugTag, "RESPONSE: $bodyString")
+                //val bodyString = response.body.string()
+                //Log.d(NetworkDebugTag, "RESPONSE: $bodyString")
                 Log.d(NetworkDebugTag, "STATUS: $statusCode")
 
                 if (response.isSuccessful) { // same as (code in 200..299)
-                    _detectedObjects.value =
-                        parseNetworkCallResponse(bodyString).detections
+                    // 📥 receive JPEG bytes
+                    val imageBytes = response.body.bytes()
+
+                    // convert bytes -> Bitmap
+                    val bitmap = BitmapFactory.decodeByteArray(
+                        imageBytes,
+                        0,
+                        imageBytes.size
+                    )
+                    _serverBitmap.value = bitmap
+
                 } else {
                     Log.e(NetworkDebugTag, "Error response: $statusCode")
                     // optionally handle error body here
                 }
                 _isProcessing.value = false
-                /*viewModelScope.launch {
-                    delay(200) // 200ms delay
-                    _isProcessing.value = false
-                }*/
+                _hasReceivedFirstFrame.value = true
             }
         })
     }
@@ -146,6 +143,10 @@ class CameraViewModel(
                 Log.d(NetworkDebugTag, "RESPONSE: $json")
                 _isProcessing.value = false
             }
+            /*viewModelScope.launch {
+                    delay(200) // 200ms delay
+                    _isProcessing.value = false
+                }*/
         })
     }
 
