@@ -49,8 +49,9 @@ fun CameraScreen(viewModel: CameraViewModel) {
 
     val detectedObjects by viewModel.detectedObjects.collectAsStateWithLifecycle()
     val isProcessing by viewModel.isProcessing.collectAsStateWithLifecycle()
-    val fps by viewModel.fps.collectAsStateWithLifecycle()
-    val cameraFps by viewModel.cameraFps.collectAsStateWithLifecycle()
+    val previewViewFps by viewModel.previewViewFps.collectAsStateWithLifecycle()
+    val imageProxyFps by viewModel.imageProxyFps.collectAsStateWithLifecycle()
+    val inferenceFps by viewModel.inferenceFps.collectAsStateWithLifecycle()
 
     var previewViewSize: Size by remember { mutableStateOf(Size(0f,0f)) }
     var imageProxySize: Size by remember { mutableStateOf(Size(0f,0f)) }
@@ -105,7 +106,7 @@ fun CameraScreen(viewModel: CameraViewModel) {
         CameraPreview(
             outputImageProxyFormat = outputImageProxyFormat,
             onFrame = {_imgProxy,_previewView->
-
+                viewModel.updateImageProxyFPS()
                 //for proper bounding box =========================
                 previewViewSize = Size(_previewView .width.toFloat(), _previewView.height.toFloat())
                 imageProxySize = if (_imgProxy.imageInfo.rotationDegrees in intArrayOf(0,180)) {
@@ -119,7 +120,7 @@ fun CameraScreen(viewModel: CameraViewModel) {
 
                     val now = System.currentTimeMillis()
 
-                    viewModel.debugInfo(_imgProxy,_previewView)
+                    //viewModel.debugInfo(_imgProxy,_previewView)
                     //val jpegBytes = _imgProxy.yuvToJpegByte(quality = 70)
                     val rotatedBitMap = _imgProxy.rgbToBitmap().rotateBitmap(_imgProxy.imageInfo.rotationDegrees)
                     Log.d(PerformanceDebugTag, "CameraScreen: Time to prepare image: ${System.currentTimeMillis()-now}")
@@ -181,18 +182,26 @@ fun CameraScreen(viewModel: CameraViewModel) {
             modifier = Modifier.align(Alignment.TopStart),
         ) {
             Text(
-                text = "FPS: ${"%.1f".format(fps)}",
+                text = "PreviewView FPS: ${"%.1f".format(previewViewFps)}",
                 modifier = Modifier
                     //.align(Alignment.TopStart)
-                    .padding(16.dp),
+                    .padding(16.dp,8.dp),
                 color = Color.White,
                 fontSize = 14.sp
             )
             Text(
-                text = "Camera FPS: ${"%.1f".format(cameraFps)}",
+                text = "ImageProxy FPS: ${"%.1f".format(imageProxyFps)}",
                 modifier = Modifier
                     //.align(Alignment.TopStart)
-                    .padding(16.dp),
+                    .padding(16.dp,8.dp),
+                color = Color.White,
+                fontSize = 14.sp
+            )
+            Text(
+                text = "Inference FPS: ${"%.1f".format(inferenceFps)}",
+                modifier = Modifier
+                    //.align(Alignment.TopStart)
+                    .padding(16.dp,8.dp),
                 color = Color.White,
                 fontSize = 14.sp
             )

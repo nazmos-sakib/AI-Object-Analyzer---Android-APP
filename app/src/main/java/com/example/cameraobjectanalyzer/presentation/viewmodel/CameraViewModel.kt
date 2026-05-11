@@ -17,14 +17,18 @@ import com.example.cameraobjectanalyzer.domain.model.DetectionResponse
 import com.example.cameraobjectanalyzer.utils.Constants.BASE_URL
 import com.example.cameraobjectanalyzer.utils.Constants.ImageDebugTag
 import com.example.cameraobjectanalyzer.utils.Constants.NetworkDebugTag
+import com.example.cameraobjectanalyzer.utils.FpsCounter
 import com.google.gson.Gson
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.Call
 import okhttp3.Callback
+import okhttp3.Dispatcher
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -33,6 +37,7 @@ import okhttp3.Response
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import kotlin.text.toFloat
 
 
 class CameraViewModel(
@@ -41,7 +46,8 @@ class CameraViewModel(
 
 
     private val gson = Gson()
-
+    private val inferenceFpsCounter = FpsCounter()
+    private val imageProxyFpsCounter = FpsCounter()
 
 /*
     private val _detectedObjects = MutableStateFlow<List<DetectedObject>>(emptyList())
@@ -54,19 +60,23 @@ class CameraViewModel(
     private val _isProcessing = MutableStateFlow(false)
     val isProcessing: StateFlow<Boolean> = _isProcessing.asStateFlow()
 
-    private val _fps = MutableStateFlow(0f)
-    val fps: StateFlow<Float> = _fps.asStateFlow()
+    private val _imageProxyFps = MutableStateFlow(0f)
+    val imageProxyFps: StateFlow<Float> = _imageProxyFps.asStateFlow()
+    private val _previewViewFps = MutableStateFlow(0f)
+    val previewViewFps: StateFlow<Float> = _previewViewFps.asStateFlow()
 
-    private val _cameraFps = MutableStateFlow(0f)
-    val cameraFps: StateFlow<Float> = _cameraFps.asStateFlow()
+    private val _inferenceFps = MutableStateFlow(0f)
+    val inferenceFps: StateFlow<Float> = _inferenceFps.asStateFlow()
 
-    private var frameCount = 0
-    private var lastTime = System.currentTimeMillis()
 
     init {
 
     }
 
+    fun  updateImageProxyFPS(){
+        imageProxyFpsCounter.tick("Analyzer FPS")
+        _imageProxyFps.value = imageProxyFpsCounter.fps.toFloat()
+    }
     fun parseNetworkCallResponse(json: String): DetectionResponse {
         val a = gson.fromJson(json, DetectionResponse::class.java)
         Log.d(NetworkDebugTag, "parseResponse: ${a.detections.size}")
@@ -80,7 +90,7 @@ class CameraViewModel(
 
         _isProcessing.value = true
         //Log.d(NetworkDebugTag, "API called")
-        updateCameraFPS()
+        val now = System.currentTimeMillis()
 
         val requestBody = jpegBytes.toRequestBody("image/jpeg".toMediaType())
 
@@ -106,11 +116,13 @@ class CameraViewModel(
                 if (response.isSuccessful) { // same as (code in 200..299)
                     _detectedObjects.value =
                         parseNetworkCallResponse(bodyString).detections
+                    updateInferenceFPS()
                 } else {
                     Log.e(NetworkDebugTag, "Error response: $statusCode")
                     // optionally handle error body here
                 }
                 _isProcessing.value = false
+                Log.d(PerformanceDebugTag, "viewModel: uploadImageV2: total execution time: ${System.currentTimeMillis()-now}")
                 /*viewModelScope.launch {
                     delay(200) // 200ms delay
                     _isProcessing.value = false
@@ -125,7 +137,7 @@ class CameraViewModel(
         if (_isProcessing.value) return
         _isProcessing.value = true
 
-        updateCameraFPS()
+
 
         val requestBody = jpegBytes.toRequestBody("image/jpeg".toMediaType())
 
@@ -209,7 +221,7 @@ class CameraViewModel(
 
         _isProcessing.value = true
         Log.d(PerformanceDebugTag, "viewModelFPSRateLimit")
-        updateCameraFPS()
+        updateInferenceFPS()
 
         viewModelScope.launch {
             delay(1000) // performance delay
@@ -233,28 +245,16 @@ class CameraViewModel(
 
 
 
-    private var cameraFrameCount = 0
-    private var lastCameraTimestamp = 0L
-    fun updateCameraFPS() {
-        val now = System.currentTimeMillis()
-        cameraFrameCount++
-        if (lastCameraTimestamp == 0L) {
-            lastCameraTimestamp = System.currentTimeMillis()
-        }
-        val diff = now - lastCameraTimestamp
-        if (diff >= 1000) {
-            _cameraFps.value = cameraFrameCount * 1000f / diff
-            //Log.d(PerformanceDebugTag, "Camera FPS: ${_cameraFps.value}")
-            frameCount = 0
-            lastTime = now
-        }
+    fun updateInferenceFPS() {
+        inferenceFpsCounter.tick("Inference FPS")
+        _inferenceFps.value = inferenceFpsCounter.fps.toFloat()
     }
 
     override fun onCleared() {
         super.onCleared()
     }
 
-    fun updateFps(frameCount: Int) {
-        _fps.value = frameCount.toFloat()
+    fun updateDisplayFps(frameCount: Int) {
+        _previewViewFps.value = frameCount.toFloat()
     }
 }

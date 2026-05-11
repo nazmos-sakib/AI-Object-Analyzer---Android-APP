@@ -15,7 +15,7 @@ object ChoreographerFPSMonitor {
                 frameCount++
 
                 if (frameTimeNanos - lastTime >= 1_000_000_000) {
-                    viewModel.updateFps(frameCount)
+                    viewModel.updateDisplayFps(frameCount)
                     frameCount = 0
                     lastTime = frameTimeNanos
                 }
